@@ -57,7 +57,12 @@ def seed_indices():
                     continue
                 
                 data_referencia = data_raw.date()
-                valor = ensure_decimal(valor_raw)
+                
+                # Handle float values from Excel by converting to string first
+                if isinstance(valor_raw, float):
+                    valor = ensure_decimal(str(valor_raw))
+                else:
+                    valor = ensure_decimal(valor_raw)
                 
                 # Check if already exists
                 existing = db.query(IndiceEconomico).filter(
