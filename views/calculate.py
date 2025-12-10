@@ -139,15 +139,12 @@ st.info(f"📋 **Objeto:** {contrato.objeto}")
 
 st.markdown("---")
 
-# Step 3: Input measurement value and adjustment months
+# Step 3: Input measurement value and adjustment period
 st.subheader("3️⃣ Dados do Reajuste")
 
-# Initialize session state for currency input and multiple adjustments
+# Initialize session state for currency input
 if "valor_input" not in st.session_state:
     st.session_state.valor_input = ""
-
-if "num_reajustes" not in st.session_state:
-    st.session_state.num_reajustes = 1
 
 def atualizar_formatacao():
     """Callback para formatar o valor quando o usuário aperta Enter ou sai do campo"""
@@ -167,42 +164,48 @@ if valor_medicao_str:
 
 st.markdown("---")
 
-# Multiple adjustment periods
-st.markdown("**Períodos de Reajuste**")
-st.caption("Para contratos com mais de 2 anos, adicione múltiplos períodos de reajuste.")
+# Period selection
+st.markdown("**Período do Reajuste**")
 
-col_add, col_remove = st.columns([1, 1])
-with col_add:
-    if st.button("➕ Adicionar período", use_container_width=True):
-        st.session_state.num_reajustes += 1
-        st.rerun()
+col1, col2 = st.columns(2)
 
-with col_remove:
-    if st.session_state.num_reajustes > 1:
-        if st.button("➖ Remover período", use_container_width=True):
-            st.session_state.num_reajustes -= 1
-            st.rerun()
+with col1:
+    st.markdown("**Data Inicial (I₀)**")
+    usar_data_base = st.checkbox(
+        "Usar data base do orçamento",
+        value=True,
+        help="Marque para usar a data base do orçamento como índice inicial (I₀)"
+    )
 
-# Collect adjustment periods
-meses_reajuste = []
-for i in range(st.session_state.num_reajustes):
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        mes = st.date_input(
-            f"Mês de Referência do Reajuste {i + 1}*",
-            value=date.today().replace(day=1),
-            help=f"Mês para o {i + 1}º período de reajuste",
+    if usar_data_base:
+        data_inicio = contrato.data_base_orcamento
+        st.info(f"📅 Data inicial: **{data_inicio.strftime('%m/%Y')}** (data base do orçamento)")
+    else:
+        data_inicio = st.date_input(
+            "Data inicial*",
+            value=contrato.data_base_orcamento,
+            help="Selecione a data do índice inicial (I₀)",
             format="DD/MM/YYYY",
-            key=f"mes_reajuste_{i}"
+            key="data_inicio_custom"
         )
-        meses_reajuste.append(mes)
-    with col2:
-        if i == 0:
-            st.caption("📅 Primeiro reajuste")
-        else:
-            st.caption(f"📅 {i + 1}º reajuste")
+        # Normalize to first day of month
+        data_inicio = data_inicio.replace(day=1)
 
+with col2:
+    st.markdown("**Data Final (I₁)**")
+    data_fim = st.date_input(
+        "Data final*",
+        value=date.today().replace(day=1),
+        help="Selecione a data do índice final (I₁) para o cálculo do reajuste",
+        format="DD/MM/YYYY",
+        key="data_fim"
+    )
+    # Normalize to first day of month
+    data_fim = data_fim.replace(day=1)
+
+# Show selected period
 st.markdown("---")
+st.markdown(f"**Período selecionado:** {data_inicio.strftime('%m/%Y')} → {data_fim.strftime('%m/%Y')}")
 
 # Step 4: Calculate
 if st.button("🧮 Calcular Reajuste", type="primary", use_container_width=True):
@@ -219,139 +222,106 @@ if st.button("🧮 Calcular Reajuste", type="primary", use_container_width=True)
             st.error("❌ O valor a ser reajustado deve ser maior que zero.")
             st.stop()
 
-        # Process all adjustment periods
-        resultados = []
-        valor_reajuste_total = Decimal('0')
-        tem_erro = False
-
-        for i, mes_reajuste in enumerate(meses_reajuste):
-            # Normalize date to first day of month for index lookup
-            mes_reajuste_normalizado = mes_reajuste.replace(day=1)
-
-            # Validate legal interval (365 days) - only for first period from base date
-            if i == 0:
-                intervalo_valido, mensagem_intervalo = validar_intersticio_legal(
-                    contrato.data_base_orcamento,
-                    mes_reajuste
-                )
-                if not intervalo_valido:
-                    st.error(f"❌ Período {i + 1}: {mensagem_intervalo}")
-                    tem_erro = True
-                    continue
-
-            # Get adjustment index (I_i)
-            indice_reajuste = buscar_indice_por_data(db, mes_reajuste_normalizado)
-
-            if not indice_reajuste:
-                st.error(
-                    f"❌ Período {i + 1}: Índice para o mês {mes_reajuste_normalizado.strftime('%m/%Y')} não encontrado. "
-                    f"Por favor, cadastre o índice na página 'Gestão de Índices'."
-                )
-                tem_erro = True
-                continue
-
-            # Calculate K factor
-            fator_k = calcular_fator_k_truncado(indice_base.valor, indice_reajuste.valor)
-
-            # Calculate adjustment value
-            valor_reajuste = calcular_valor_reajuste(valor_medicao, fator_k)
-
-            # Store result
-            resultados.append({
-                'periodo': i + 1,
-                'mes_reajuste': mes_reajuste_normalizado,
-                'indice_reajuste': indice_reajuste,
-                'fator_k': fator_k,
-                'valor_reajuste': valor_reajuste
-            })
-
-            valor_reajuste_total += valor_reajuste
-
-        if tem_erro and not resultados:
+        # Validate that end date is after start date
+        if data_fim <= data_inicio:
+            st.error("❌ A data final deve ser posterior à data inicial.")
             st.stop()
 
+        # Validate legal interval (365 days) only if using budget base date
+        if usar_data_base:
+            intervalo_valido, mensagem_intervalo = validar_intersticio_legal(
+                data_inicio,
+                data_fim
+            )
+            if not intervalo_valido:
+                st.error(f"❌ {mensagem_intervalo}")
+                st.stop()
+            else:
+                st.success(f"✅ {mensagem_intervalo}")
+
+        # Get initial index (I₀)
+        indice_inicial = buscar_indice_por_data(db, data_inicio)
+        if not indice_inicial:
+            st.error(
+                f"❌ Índice para a data inicial ({data_inicio.strftime('%m/%Y')}) não encontrado. "
+                f"Por favor, cadastre o índice na página 'Gestão de Índices'."
+            )
+            st.stop()
+
+        # Get final index (I₁)
+        indice_final = buscar_indice_por_data(db, data_fim)
+        if not indice_final:
+            st.error(
+                f"❌ Índice para a data final ({data_fim.strftime('%m/%Y')}) não encontrado. "
+                f"Por favor, cadastre o índice na página 'Gestão de Índices'."
+            )
+            st.stop()
+
+        # Calculate K factor
+        fator_k = calcular_fator_k_truncado(indice_inicial.valor, indice_final.valor)
+
+        # Calculate adjustment value
+        valor_reajuste = calcular_valor_reajuste(valor_medicao, fator_k)
+
         # Calculate total updated value
-        valor_total = calcular_valor_total_atualizado(valor_medicao, valor_reajuste_total)
+        valor_total = calcular_valor_total_atualizado(valor_medicao, valor_reajuste)
 
         # Display results
         st.markdown("---")
         st.subheader("4️⃣ Resultado do Cálculo")
 
-        # Show results for each period
-        for resultado in resultados:
-            periodo_label = f"Período {resultado['periodo']}" if len(resultados) > 1 else "Reajuste"
-            with st.expander(f"📊 {periodo_label} - {resultado['mes_reajuste'].strftime('%m/%Y')}", expanded=True):
-                st.markdown(f"""
-                **Fórmula do Fator K:**
+        # Show calculation details
+        with st.expander(f"📊 Detalhes do Cálculo ({data_inicio.strftime('%m/%Y')} → {data_fim.strftime('%m/%Y')})", expanded=True):
+            st.markdown(f"""
+            **Índices utilizados:**
+            - I₀ ({data_inicio.strftime('%m/%Y')}): {indice_inicial.valor}
+            - I₁ ({data_fim.strftime('%m/%Y')}): {indice_final.valor}
 
-                K = (I₁ / I₀) - 1
+            ---
 
-                K = ({resultado['indice_reajuste'].valor} / {indice_base.valor}) - 1
+            **Fórmula do Fator K:**
 
-                K = {resultado['indice_reajuste'].valor / indice_base.valor} - 1
+            K = (I₁ / I₀) - 1
 
-                K = {(resultado['indice_reajuste'].valor / indice_base.valor) - Decimal('1')}
+            K = ({indice_final.valor} / {indice_inicial.valor}) - 1
 
-                **K (truncado à 4ª casa decimal) = {resultado['fator_k']}**
+            K = {indice_final.valor / indice_inicial.valor} - 1
 
-                ---
+            K = {(indice_final.valor / indice_inicial.valor) - Decimal('1')}
 
-                **Fórmula do Reajuste:**
+            **K (truncado à 4ª casa decimal) = {fator_k}**
 
-                R = K × Vr
+            ---
 
-                R = {resultado['fator_k']} × {format_brazilian_currency(valor_medicao)}
+            **Fórmula do Reajuste:**
 
-                **R = {format_brazilian_currency(resultado['valor_reajuste'])}**
-                """)
+            R = K × Vr
+
+            R = {fator_k} × {format_brazilian_currency(valor_medicao)}
+
+            **R = {format_brazilian_currency(valor_reajuste)}**
+            """)
 
         # Summary metrics
         st.markdown("### Resumo")
 
-        if len(resultados) > 1:
-            # Multiple periods - show summary table
-            col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
 
-            with col1:
-                st.metric("Valor Original", format_brazilian_currency(valor_medicao))
+        with col1:
+            st.metric("Fator K", f"{fator_k}")
 
-            with col2:
-                st.metric("Reajuste Total", format_brazilian_currency(valor_reajuste_total))
+        with col2:
+            st.metric("Valor Original", format_brazilian_currency(valor_medicao))
 
-            with col3:
-                st.metric(
-                    "Valor Total Atualizado",
-                    format_brazilian_currency(valor_total),
-                    delta=format_brazilian_currency(valor_reajuste_total)
-                )
+        with col3:
+            st.metric("Valor do Reajuste", format_brazilian_currency(valor_reajuste))
 
-            # Detailed breakdown
-            st.markdown("**Detalhamento por Período:**")
-            for resultado in resultados:
-                st.write(
-                    f"- Período {resultado['periodo']} ({resultado['mes_reajuste'].strftime('%m/%Y')}): "
-                    f"K = {resultado['fator_k']} → R = {format_brazilian_currency(resultado['valor_reajuste'])}"
-                )
-        else:
-            # Single period
-            resultado = resultados[0]
-            col1, col2, col3, col4 = st.columns(4)
-
-            with col1:
-                st.metric("Fator K", f"{resultado['fator_k']}")
-
-            with col2:
-                st.metric("Valor Original", format_brazilian_currency(valor_medicao))
-
-            with col3:
-                st.metric("Valor do Reajuste", format_brazilian_currency(resultado['valor_reajuste']))
-
-            with col4:
-                st.metric(
-                    "Valor Total Atualizado",
-                    format_brazilian_currency(valor_total),
-                    delta=format_brazilian_currency(resultado['valor_reajuste'])
-                )
+        with col4:
+            st.metric(
+                "Valor Total Atualizado",
+                format_brazilian_currency(valor_total),
+                delta=format_brazilian_currency(valor_reajuste)
+            )
 
         # Save calculation and generate PDF
         st.markdown("---")
@@ -360,54 +330,47 @@ if st.button("🧮 Calcular Reajuste", type="primary", use_container_width=True)
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button("💾 Salvar Cálculo(s) no Histórico", use_container_width=True):
+            if st.button("💾 Salvar Cálculo no Histórico", use_container_width=True):
                 try:
-                    ids_salvos = []
-                    for resultado in resultados:
-                        calculo_salvo = salvar_calculo(
-                            db,
-                            contrato_id=contrato.id,
-                            mes_indice_base=contrato.data_base_orcamento,
-                            valor_indice_base=indice_base.valor,
-                            mes_indice_reajuste=resultado['mes_reajuste'],
-                            valor_indice_reajuste=resultado['indice_reajuste'].valor,
-                            fator_k_aplicado=resultado['fator_k'],
-                            valor_original_medicao=valor_medicao,
-                            valor_reajuste=resultado['valor_reajuste']
-                        )
-                        ids_salvos.append(calculo_salvo.id)
+                    calculo_salvo = salvar_calculo(
+                        db,
+                        contrato_id=contrato.id,
+                        mes_indice_base=data_inicio,
+                        valor_indice_base=indice_inicial.valor,
+                        mes_indice_reajuste=data_fim,
+                        valor_indice_reajuste=indice_final.valor,
+                        fator_k_aplicado=fator_k,
+                        valor_original_medicao=valor_medicao,
+                        valor_reajuste=valor_reajuste
+                    )
 
-                    if len(ids_salvos) == 1:
-                        st.success(f"✅ Cálculo salvo com ID #{ids_salvos[0]}")
-                    else:
-                        st.success(f"✅ {len(ids_salvos)} cálculos salvos (IDs: {', '.join(map(str, ids_salvos))})")
+                    st.success(f"✅ Cálculo salvo com ID #{calculo_salvo.id}")
 
                 except Exception as e:
                     st.error(f"❌ Erro ao salvar cálculo: {str(e)}")
 
         with col2:
-            # Generate PDF for the first/main calculation
+            # Generate PDF
             try:
-                resultado_principal = resultados[0]
                 pdf_bytes = gerar_pdf_memoria_calculo(
                     numero_contrato=contrato.numero_contrato,
                     empresa=contrato.empresa,
                     objeto=contrato.objeto,
-                    data_base=contrato.data_base_orcamento,
+                    data_base=data_inicio,
                     data_assinatura=contrato.data_assinatura,
-                    indice_base=indice_base.valor,
-                    mes_reajuste=resultado_principal['mes_reajuste'],
-                    indice_reajuste=resultado_principal['indice_reajuste'].valor,
-                    fator_k=resultado_principal['fator_k'],
+                    indice_base=indice_inicial.valor,
+                    mes_reajuste=data_fim,
+                    indice_reajuste=indice_final.valor,
+                    fator_k=fator_k,
                     valor_medicao=valor_medicao,
-                    valor_reajuste=resultado_principal['valor_reajuste'],
-                    valor_total=valor_medicao + resultado_principal['valor_reajuste']
+                    valor_reajuste=valor_reajuste,
+                    valor_total=valor_total
                 )
 
                 st.download_button(
                     label="📄 Baixar Memória de Cálculo (PDF)",
                     data=pdf_bytes,
-                    file_name=f"memoria_calculo_{contrato.numero_contrato.replace('/', '_')}_{resultado_principal['mes_reajuste'].strftime('%Y%m')}.pdf",
+                    file_name=f"memoria_calculo_{contrato.numero_contrato.replace('/', '_')}_{data_inicio.strftime('%Y%m')}_{data_fim.strftime('%Y%m')}.pdf",
                     mime="application/pdf",
                     use_container_width=True
                 )
@@ -468,24 +431,23 @@ with st.expander("ℹ️ Ajuda - Como calcular reajustes"):
     1. **Selecione o contrato** para o qual deseja calcular o reajuste
     2. **Verifique** as informações do contrato, especialmente a Data Base do Orçamento
     3. **Informe** o valor a ser reajustado
-    4. **Adicione os períodos de reajuste:**
-       - Para contratos com até 2 anos: use apenas 1 período
-       - Para contratos com mais de 2 anos: adicione múltiplos períodos para verificação
+    4. **Defina o período do reajuste:**
+       - **Data Inicial (I₀):** Por padrão, usa a data base do orçamento. Desmarque a caixa para escolher outra data.
+       - **Data Final (I₁):** Selecione o mês de referência para o cálculo do reajuste.
     5. **Clique** em "Calcular Reajuste"
     6. **Revise** os resultados e a memória de cálculo
-    7. **Salve** o(s) cálculo(s) no histórico (opcional)
+    7. **Salve** o cálculo no histórico (opcional)
     8. **Baixe** a Memória de Cálculo em PDF
 
-    **Múltiplos Períodos de Reajuste:**
+    **Sobre o Período do Reajuste:**
 
-    Para contratos com mais de 2 anos desde a proposta, você pode adicionar
-    múltiplos períodos de reajuste usando os botões "Adicionar período" e
-    "Remover período". Isso permite verificar os valores de reajuste em
-    diferentes momentos do contrato.
+    - Marque "Usar data base do orçamento" para usar automaticamente a data base do contrato como I₀
+    - Desmarque para escolher uma data inicial personalizada (útil para verificações de valores em períodos específicos)
+    - A validação do interstício legal (365 dias) só é aplicada quando usando a data base do orçamento
 
     **Regras importantes:**
 
-    - O primeiro reajuste só pode ser calculado após 365 dias da data base do orçamento
+    - Ao usar a data base do orçamento, o reajuste só pode ser calculado após 365 dias
     - O fator K é **truncado** (não arredondado) na 4ª casa decimal
     - Os índices I₀ e I₁ devem estar cadastrados no sistema
     - Todos os cálculos são salvos em um histórico para auditoria
