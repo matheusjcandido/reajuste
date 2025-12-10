@@ -93,3 +93,42 @@ def seed_indices():
             
     except Exception as e:
         print(f"Error during seeding: {e}")
+
+
+def seed_contracts():
+    """
+    Seeds an example contract if it doesn't exist.
+    """
+    from src.db.models import Contrato
+    from decimal import Decimal
+    from datetime import date
+    
+    db = get_db()
+    
+    try:
+        # Check if example contract exists
+        numero_contrato = "042/2024-SESP"
+        existing = db.query(Contrato).filter(Contrato.numero_contrato == numero_contrato).first()
+        
+        if not existing:
+            print(f"Seeding example contract: {numero_contrato}")
+            
+            contrato = Contrato(
+                numero_contrato=numero_contrato,
+                objeto="Construção do Batalhão de Polícia Militar - 5ª Companhia",
+                empresa="Engenharia & Construções Forte Ltda",
+                data_base_orcamento=date(2024, 1, 1),
+                data_assinatura=date(2024, 2, 15),
+                valor_inicial=Decimal("8500000.00")
+            )
+            
+            db.add(contrato)
+            db.commit()
+            print("Example contract seeded successfully.")
+        else:
+            print("Example contract already exists.")
+            
+    except Exception as e:
+        print(f"Error seeding contract: {e}")
+    finally:
+        db.close()
