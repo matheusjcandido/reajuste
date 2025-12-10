@@ -16,9 +16,11 @@ st.set_page_config(
 )
 
 from src.db.connection import init_db
+from src.services.seeding import seed_indices
 
 # Initialize database on first run
 init_db()
+seed_indices()
 
 # Define navigation pages (ordem invertida para priorizar cálculo)
 pg = st.navigation({
