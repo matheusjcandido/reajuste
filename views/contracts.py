@@ -44,7 +44,8 @@ with st.form("novo_contrato"):
         data_assinatura = st.date_input(
             "Data de Assinatura*",
             value=date.today(),
-            help="Data em que o contrato foi assinado"
+            help="Data em que o contrato foi assinado",
+            format="DD/MM/YYYY"
         )
 
     with col2:
@@ -58,7 +59,8 @@ with st.form("novo_contrato"):
         data_base_orcamento = st.date_input(
             "Data Base do Orçamento* ⚠️",
             value=date.today().replace(day=1),
-            help="CRÍTICO: Esta data define o índice I₀ usado nos cálculos de reajuste"
+            help="CRÍTICO: Esta data define o índice I₀ usado nos cálculos de reajuste",
+            format="DD/MM/YYYY"
         )
 
         valor_inicial_str = st.text_input(
