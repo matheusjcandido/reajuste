@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(venv/bin/streamlit run:*)",
+      "Bash(ls:*)",
+      "Bash(venv/bin/pip install:*)"
+    ]
+  }
+}
