@@ -81,13 +81,20 @@ def buscar_indice_por_data(db: Session, data_referencia: date) -> IndiceEconomic
 
     Args:
         db: Database session
-        data_referencia: Reference date to search
+        data_referencia: Reference date to search (any day of month)
 
     Returns:
         IndiceEconomico or None: Index record if found, None otherwise
+
+    Note:
+        Indices are stored with day=1, so this function normalizes
+        the input date to the first day of the month before searching.
     """
+    # Normalize to first day of month (indices are always stored with day=1)
+    data_normalizada = data_referencia.replace(day=1)
+
     return db.query(IndiceEconomico)\
-        .filter(IndiceEconomico.data_referencia == data_referencia)\
+        .filter(IndiceEconomico.data_referencia == data_normalizada)\
         .first()
 
 

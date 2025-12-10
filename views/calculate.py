@@ -154,7 +154,7 @@ def atualizar_formatacao():
 
 with col1:
     valor_medicao_str = st.text_input(
-        "Valor da Medição/Fatura*",
+        "Valor a ser reajustado*",
         key="valor_input",
         on_change=atualizar_formatacao,
         placeholder="Digite o valor (ex: 100000)",
@@ -180,7 +180,7 @@ if st.button("🧮 Calcular Reajuste", type="primary", use_container_width=True)
     try:
         # Validate inputs
         if not valor_medicao_str:
-            st.error("❌ Por favor, informe o valor da medição.")
+            st.error("❌ Por favor, informe o valor a ser reajustado.")
             st.stop()
 
         # Parse Brazilian currency format to Decimal

@@ -85,22 +85,25 @@ with st.form("novo_contrato"):
                 # Convert valor_inicial to Decimal
                 valor_inicial = Decimal(valor_inicial_str.replace(",", "."))
 
+                # Normalize data_base_orcamento to first day of month
+                data_base_normalizada = data_base_orcamento.replace(day=1)
+
                 # Check if there's an index for the base date
-                indice_base = buscar_indice_por_data(db, data_base_orcamento)
+                indice_base = buscar_indice_por_data(db, data_base_normalizada)
                 if not indice_base:
                     st.error(
                         f"❌ Não há índice cadastrado para a data base do orçamento "
-                        f"({data_base_orcamento.strftime('%m/%Y')}). "
+                        f"({data_base_normalizada.strftime('%m/%Y')}). "
                         f"Cadastre o índice primeiro na página 'Gestão de Índices'."
                     )
                 else:
-                    # Create contract
+                    # Create contract with normalized date
                     criar_contrato(
                         db,
                         numero_contrato=numero_contrato,
                         objeto=objeto,
                         empresa=empresa,
-                        data_base_orcamento=data_base_orcamento,
+                        data_base_orcamento=data_base_normalizada,
                         data_assinatura=data_assinatura,
                         valor_inicial=valor_inicial
                     )
@@ -108,7 +111,7 @@ with st.form("novo_contrato"):
                     st.success(f"✅ Contrato {numero_contrato} cadastrado com sucesso!")
                     st.info(
                         f"📊 Índice base (I₀): {indice_base.valor} "
-                        f"({data_base_orcamento.strftime('%m/%Y')})"
+                        f"({data_base_normalizada.strftime('%m/%Y')})"
                     )
                     st.rerun()
 
